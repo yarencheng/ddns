@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -78,20 +79,40 @@ func update() {
 	if err != nil {
 		log.Fatal().Err(err).Send()
 	}
+
+	rs := &dns.ResourceRecordSet{
+		Kind:    "dns#resourceRecordSet",
+		Name:    NAME + ".",
+		Rrdatas: []string{aip},
+		Ttl:     300,
+		Type:    "A",
+	}
+
 	call := dnsService.ResourceRecordSets.Create(
 		PROJECT_ID,
 		MANAGED_ZONE,
-		&dns.ResourceRecordSet{
-			Kind:    "dns#resourceRecordSet",
-			Name:    NAME,
-			Rrdatas: []string{aip + "."},
-			Ttl:     300,
-			Type:    "A",
-		})
+		rs,
+	)
 
 	record, err := call.Do()
 	if err != nil {
-		log.Fatal().Err(err).Send()
+		if strings.Contains(err.Error(), "alreadyExists") {
+
+			call := dnsService.ResourceRecordSets.Patch(
+				PROJECT_ID,
+				MANAGED_ZONE,
+				NAME+".",
+				"A",
+				rs,
+			)
+
+			record, err = call.Do()
+			if err != nil {
+				log.Fatal().Err(err).Send()
+			}
+		} else {
+			log.Fatal().Err(err).Send()
+		}
 	}
 
 	log.Info().Interface("record", record).Msg("")
